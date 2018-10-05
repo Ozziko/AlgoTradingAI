@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 """@author: Oz Livneh (oz.livneh@gmail.com), all rights reserved, use at your own risk
 
+See the explanation and demonstration at http://bit.ly/OzTradingAI
+
 Compatibility:
     developed on anaconda 5.2, containing:
         Python: 3.6.5 |Anaconda, Inc.| (default, Mar 29 2018, 13:32:41) [MSC v.1900 64 bit (AMD64)]
@@ -39,8 +41,6 @@ logging.basicConfig(
         datefmt=logging_time_format)
 
 logger.info('OzML imported, logger created with logging level: INFO (change levels by calling OzML.set_logging_level)')
-logger.warn('I should add link to my github, and properly write the liscence')
-
 #%% defining functions, classes
 
 def set_logging_level(logger_obj,level):
@@ -88,6 +88,15 @@ def import_data(symbols,columns_list_to_use):
     len(data_df),len(attribute_names_list)))
   return (data_df,attribute_names_list)
 
+def legend_styler(labels=None,loc='best',framealpha=0.6,fancybox=True,frameon=True,facecolor='white'):
+    """created on 2018/10/03 to easily control legend style in all executions 
+        from one place.
+    """
+    if labels==None:
+        plt.legend(loc=loc,framealpha=framealpha,fancybox=fancybox,frameon=frameon,facecolor=facecolor)
+    else:
+        plt.legend(labels,loc=loc,framealpha=framealpha,fancybox=fancybox,frameon=frameon,facecolor=facecolor)
+
 def data_plotting(data_df,attribute_names_list):
     """created on 2018/09/13 for data plotting used for verification,
         before building features.
@@ -98,7 +107,7 @@ def data_plotting(data_df,attribute_names_list):
     temp_norm_df.columns=attribute_names_list
     temp_norm_df.plot()
     plt.title('normalized data (x-mean(x))/std(x)')
-    plt.legend(loc='upper left')
+    legend_styler(loc='upper left')
     plt.grid(True,which='major',axis='both')
 
 def examine_data_jumps(df,processing_mode,suspicious_jump_percents,attribute_names_list=0,plotting=True,bins=100):
@@ -308,7 +317,7 @@ class train_test_split:
         plt.plot(self.y_test_series,label='test')
         plt.grid(True,which='major',axis='both')
         plt.title('target: '+self.target_name)
-        plt.legend(loc='best')
+        legend_styler()
         
         if self.processing_mode=='% differences':
             plt.ylabel('% differences')
@@ -331,7 +340,7 @@ class train_test_split:
             scaled_hist(self.y_test_diff_percents_series.values,label='test',bins=bins,opacity=0.7)
             plt.ylabel('counts / max(counts)')
         plt.grid(True,which='major',axis='both')
-        plt.legend(loc='best')
+        legend_styler()
         plt.xlabel('% differences')
         
 def scaled_hist(np_array,label,bins,opacity=1):
@@ -484,59 +493,65 @@ class regression:
         
         self.train_err_mean=np.mean(self.train_err_series.values)
         self.train_err_std=np.std(self.train_err_series.values)
+        self.train_MSE=np.mean(self.train_err_series.values**2)
         self.test_err_mean=np.mean(self.test_err_series.values)
         self.test_err_std=np.std(self.test_err_series.values)
+        self.test_MSE=np.mean(self.test_err_series.values**2)
         
-        logging.info('notice: error = prediction-target, MSE=mean(error^2)=var(error)')
-        logger.info('TRAIN error: mean=%.3f, std=%.3f'%(
-                self.train_err_mean,self.train_err_std))
-        logger.info('TEST error: mean=%.3f, std=%.3f'%(
-                self.test_err_mean,self.test_err_std))
+        logging.info('notice: error = prediction-target, MSE=mean(error^2)!=var(error)=mean((error-mean(error))^2)')
+        logger.info('TRAIN error: mean=%.3f, std=%.3f; sqrt(MSE)=%.3f'%(
+                self.train_err_mean,self.train_err_std,self.train_MSE**0.5))
+        logger.info('TEST error: mean=%.3f, std=%.3f; sqrt(MSE)=%.3f'%(
+                self.test_err_mean,self.test_err_std,self.test_MSE**0.5))
                 
     def plot_prediction(self,thick_linewidth=3,thin_linewidth=1,markersize=3,
                         rolling_window=50):
         """
         rolling window - window length (steps) to calculate and plot the rolling 
-            (%d step) error std for test and train periods
+            (%d step) error std for test and train periods, plotted only if >0.
         """
         plt.figure()
         ax1=plt.subplot(211)
-        plt.plot(self.y_train_series,'b.-',label='y_train',
+        plt.plot(self.y_train_series,'b.-',label='target (train)',
                  linewidth=thick_linewidth,markersize=markersize)
-        plt.plot(self.y_train_pred_series,'c.--',label='predicted y_train',
+        plt.plot(self.y_train_pred_series,'c.--',label='predicted target (train)',
                  linewidth=thin_linewidth,markersize=markersize)
-        plt.plot(self.y_test_series,'k.-',label='y_test',
+        plt.plot(self.y_test_series,'k.-',label='target (test)',
                  linewidth=thick_linewidth,markersize=markersize)
-        plt.plot(self.y_test_pred_series,'r.--',label='predicted y_test',
+        plt.plot(self.y_test_pred_series,'r.--',label='predicted target (test)',
                  linewidth=thin_linewidth,markersize=markersize)
         
         plt.grid(True,which='major',axis='both')
-        plt.legend(loc='best')
+        legend_styler()
 #        plt.ylabel(self.y_test_series.name)
         if self.processing_mode=='raw':
             plt.ylabel('$')
         elif self.processing_mode=='% differences':
             plt.ylabel('%')
         
-        train_err_rolling_std_series=self.train_err_series.rolling(window=rolling_window).std()
-        test_err_rolling_std_series=self.test_err_series.rolling(window=rolling_window).std()
-        
         ax2=plt.subplot(212,sharex=ax1)
         plt.plot(self.train_err_series,'c.-',label='train error',
                  linewidth=thin_linewidth,markersize=markersize)
-        plt.plot(train_err_rolling_std_series,'b-',linewidth=thick_linewidth,
-                 label='train error rolling std (%d steps)'%rolling_window)
         plt.plot(self.test_err_series,'r.-',label='test error',
                  linewidth=thin_linewidth,markersize=markersize)
-        plt.plot(test_err_rolling_std_series,'k-',linewidth=thick_linewidth,
+                
+        if rolling_window>0:
+            train_err_rolling_std_series=self.train_err_series.rolling(window=rolling_window).std()
+            test_err_rolling_std_series=self.test_err_series.rolling(window=rolling_window).std()
+            plt.plot(train_err_rolling_std_series,'b-',linewidth=thick_linewidth,
                  label='train error rolling std (%d steps)'%rolling_window)
-        plt.legend(loc='lower left')
+            plt.plot(test_err_rolling_std_series,'k-',linewidth=thick_linewidth,
+                 label='train error rolling std (%d steps)'%rolling_window)
+            
+        legend_styler(loc='lower left')
         
         # plotting unlabaled:
-        plt.plot(-train_err_rolling_std_series,'b-',linewidth=thick_linewidth)
-        plt.plot(-test_err_rolling_std_series,'k-',linewidth=thick_linewidth)
+        if rolling_window>0:
+            plt.plot(-train_err_rolling_std_series,'b-',linewidth=thick_linewidth)
+            plt.plot(-test_err_rolling_std_series,'k-',linewidth=thick_linewidth)
+        
         plt.plot(0*pd.concat([self.train_err_series,self.test_err_series]),
-                 'k--',linewidth=thin_linewidth)
+                     'k--',linewidth=thin_linewidth)
         
         plt.grid(True,which='major',axis='both')
 #        plt.ylabel('error (prediction-target)')
@@ -768,11 +783,23 @@ class regerssion_shallow(regression):
         plt.gcf().subplots_adjust(bottom=bottom_margin)
 
 class regerssion_deep(regression):
-    def train_TF_NN(self,epochs=100,batch_size=100,validation_split=0.25,learning_rate=0.01,
-                 training_patience=10,min_dloss_to_stop=0.01,
-                 plotting=True):
+    def train_NN(self,model=None,optimizer=None,learning_rate=0.01,
+                 max_epochs=100,batch_size=100,shuffle=False,validation_split=0.25,
+                 training_patience=10,min_dloss_to_stop=0.01,verbose=1):
         """created on 2018/09/07
         regression example: http://www.tensorflow.org/tutorials/keras/basic_regression
+        
+        Update Log:
+            v2 (OzML_v4)- 2018/10/04: added parameters, changed to allow 
+                building the model and setting the optimizer externally and 
+                pass it to here.
+        
+        https://keras.io/layers/core/
+            layers:
+                keras.layers.Dropout(rate, noise_shape=None, seed=None)
+                    rate: float between 0 and 1. Fraction of the input units to drop.
+                    seed: A Python integer to use as random seed.
+                    noise_shape: 1D integer tensor representing the shape of the binary dropout mask that will be multiplied with the input. For instance, if your inputs have shape  (batch_size, timesteps, features) and you want the dropout mask to be the same for all timesteps, you can use noise_shape=(batch_size, 1, features).
         
         http://keras.io/layers/core/#activation
             activations: 'tanh','relu','sigmoid','linear'
@@ -783,53 +810,64 @@ class regerssion_deep(regression):
                 keras.regularizers.l2(0.)
                 keras.regularizers.l1_l2(l1=0.01, l2=0.01)
         
-        model.fit:
-            documentation: http://www.tensorflow.org/api_docs/python/tf/keras/Model#fit
-            returns history object: its .history attribute is a record of training loss values and metrics values at successive epochs, as well as validation loss values and validation metrics values (if applicable).
-            inputs:
-                batch_size: (integer, default: 32) number of samples per gradient update. If unspecified, batch_size will default to 32. Do not specify the batch_size if your data is in the form of symbolic tensors, datasets, or dataset iterators (since they generate batches).
-                steps_per_epoch: (integer or None) total number of steps (batches of samples) before declaring one epoch finished and starting the next epoch. When training with input tensors such as TensorFlow data tensors, the default None is equal to the number of samples in your dataset divided by the batch size, or 1 if that cannot be determined.
-                callbacks: stops training when a monitored quantity has stopped improving. 
-                    documentation: http://www.tensorflow.org/api_docs/python/tf/keras/callbacks/EarlyStopping    
-                    inputs:
-                        min_delta: minimum change in the monitored quantity to qualify as an improvement, i.e. an absolute change of less than min_delta, will count as no improvement.
-                        patience: number of epochs with no improvement after which training will be stopped.
-                        mode: one of {auto, min, max}. In min mode, training will stop when the quantity monitored has stopped decreasing; in max mode it will stop when the quantity monitored has stopped increasing; in auto mode, the direction is automatically inferred from the name of the monitored quantity.
-                    
-        """     
+        http://www.tensorflow.org/api_docs/python/tf/keras/Model#fit            
+            batch_size: (integer, default: 32) number of samples per gradient update. If unspecified, batch_size will default to 32. Do not specify the batch_size if your data is in the form of symbolic tensors, datasets, or dataset iterators (since they generate batches).
+            steps_per_epoch: (integer or None) total number of steps (batches of samples) before declaring one epoch finished and starting the next epoch. When training with input tensors such as TensorFlow data tensors, the default None is equal to the number of samples in your dataset divided by the batch size, or 1 if that cannot be determined.
+            callbacks: stops training when a monitored quantity has stopped improving. 
+                documentation: http://www.tensorflow.org/api_docs/python/tf/keras/callbacks/EarlyStopping    
+                inputs:
+                    min_delta: minimum change in the monitored quantity to qualify as an improvement, i.e. an absolute change of less than min_delta, will count as no improvement.
+                    patience: number of epochs with no improvement after which training will be stopped.
+                    mode: one of {auto, min, max}. In min mode, training will stop when the quantity monitored has stopped decreasing; in max mode it will stop when the quantity monitored has stopped increasing; in auto mode, the direction is automatically inferred from the name of the monitored quantity.
+            validation_split: Float between 0 and 1. 
+                 Fraction of the training data to be used as validation data. 
+                 The model will set apart this fraction of the training data, 
+                 will not train on it, and will evaluate the loss and any model metrics 
+                 on this data at the end of each epoch. 
+                 The validation data is selected from the last samples in the x and y data provided, 
+                 before shuffling. This argument is not supported when x is a dataset or a dataset iterator.   
+            shuffle: Boolean (whether to shuffle the training data before each epoch) or str (for 'batch'). 'batch' is a special option for dealing with the limitations of HDF5 data; it shuffles in batch-sized chunks. Has no effect when steps_per_epoch is not None.
+            verbose: Integer. 0, 1, or 2. Verbosity mode. 0 = silent, 1 = progress bar, 2 = one line per epoch.
+        """
         import tensorflow as tf
         from tensorflow import keras
         
-        model = keras.Sequential()
-        model.add(keras.layers.Dense(50,input_shape=(len(self.X_train_df.columns),),activation='relu'))
-#        model.add(keras.layers.Dense(10, activation='tanh',
-#                                      kernel_regularizer=keras.regularizers.l1(0.1)))
-        model.add(keras.layers.Dense(50, activation='tanh',
-                                     kernel_regularizer=keras.regularizers.l1_l2(l1=0.01, l2=0.01)))
-        model.add(keras.layers.Dense(50, activation='relu',
-                                     kernel_regularizer=keras.regularizers.l1_l2(l1=0.01, l2=0.01)))
-        model.add(keras.layers.Dense(50, activation='relu',
-                                     kernel_regularizer=keras.regularizers.l1_l2(l1=0.01, l2=0.01)))
-        model.add(keras.layers.Dense(1))
+        if model==None:
+            model=keras.Sequential()
+            model.add(keras.layers.Dense(50,input_shape=(len(self.X_train_df.columns),),activation='relu'))
+    #        model.add(keras.layers.Dense(10, activation='tanh',
+    #                                      kernel_regularizer=keras.regularizers.l1(0.1)))
+            model.add(keras.layers.Dense(50, activation='tanh'))
+            model.add(keras.layers.Dense(50, activation='relu'))
+            model.add(keras.layers.Dense(50, activation='relu'))
+            model.add(keras.layers.Dense(1))
+    #        model.add(keras.layers.Dense(1,kernel_regularizer=keras.regularizers.l1_l2(l1=0.01, l2=0.01)))
         
-        optimizer=tf.train.GradientDescentOptimizer(learning_rate=learning_rate)
-#        optimizer=tf.train.RMSPropOptimizer(learning_rate=learning_rate)
+        if optimizer==None:
+            optimizer=tf.train.GradientDescentOptimizer(learning_rate=learning_rate)
+            #        optimizer=tf.train.RMSPropOptimizer(learning_rate=learning_rate)
         
         model.compile(optimizer=optimizer,
-                      loss=keras.losses.MSE,
-                      metrics=[keras.metrics.MAE,keras.metrics.MSE])
+#                loss=keras.losses.MSE,
+#                metrics=[keras.metrics.MAE,keras.metrics.MSE])
+                loss='mean_squared_error',
+                metrics=['mean_squared_error'])
         callbk=keras.callbacks.EarlyStopping(monitor='val_loss', # can stop also on monitor='loss'
                     patience=training_patience,min_delta=min_dloss_to_stop)
         
         logger.info('NN training started on TF')
         tic=time()
         self.history=model.fit(x=self.X_train_df.values,y=self.y_train_series.values,
-                          batch_size=batch_size,epochs=epochs,validation_split=validation_split,
-                          callbacks=[callbk])
+                          batch_size=batch_size,epochs=max_epochs,
+                          validation_split=validation_split,shuffle=shuffle,
+                          callbacks=[callbk],verbose=verbose)
         toc=time()
-        logger.info('training completed in %.3f seconds, saved Keras model into self.regressor (and history into self.history)'%(toc-tic))
-        model.summary()
+        logger.info('training completed in %.3f seconds, saved model into self.regressor (and history into self.history)'%(toc-tic))
         self.regressor=model
+        
+        logger.info('final sqrt(MSE): (train,validation) = (%.2f,%.2f)'%(
+            self.history.history['mean_squared_error'][-1]**0.5,
+            self.history.history['val_mean_squared_error'][-1]**0.5))
         
     def plot_training(self):
         plt.figure()
@@ -838,21 +876,23 @@ class regerssion_deep(regression):
         val_loss=np.array(self.history.history['val_loss'])
         plt.plot(self.history.epoch,train_loss**0.5,label='train')
         plt.plot(self.history.epoch,val_loss**0.5,label='validation')
-        plt.legend()
+        legend_styler()
         plt.ylabel('sqrt(loss)')
-        plt.title('loss=MSE+regularization during training')
+        plt.title('loss=MSE+regularization')
         plt.grid(True,which='major',axis='both')
         
         plt.subplot(2,1,2)
-        train_MSE=np.array(self.history.history['mean_squared_error'])
-        val_MSE=np.array(self.history.history['val_mean_squared_error'])
-        plt.plot(self.history.epoch,train_MSE**0.5,label='train') # if metrics contains keras.metrics.MSE 
-        plt.plot(self.history.epoch,val_MSE**0.5,label='validation') # if using validation and metrics contains keras.metrics.MSE 
-        plt.legend()
-        plt.xlabel('epoch (a single iteration on all training data once)')
+        train_MSE=np.array(self.history.history['mean_squared_error']) # if metrics contains 'mean_squared_error'
+        val_MSE=np.array(self.history.history['val_mean_squared_error']) # if using validation and metrics contains 'mean_squared_error'
+        plt.plot(self.history.epoch,train_MSE**0.5,label='train')
+        plt.plot(self.history.epoch,val_MSE**0.5,label='validation')
+        legend_styler()
+        plt.xlabel('epoch (completing batch updates on all training samples)')
         plt.ylabel('sqrt(MSE)')
-        plt.title('MSE during training')
+        plt.title('MSE')
         plt.grid(True,which='major',axis='both')
+        
+        plt.show()
         
 class classification:
     """v1 created on 2018/08/31 based on FinancialML 9.0
@@ -912,98 +952,94 @@ class classification:
         self.y_test_classes_series[self.y_test_diff_percents_series<short_class_level]=-1
         
     def analyze(self):        
-        train_true_pred_prob=np.mean(self.y_train_classes_pred_series==self.y_train_classes_series)
-        test_true_pred_prob=np.mean(self.y_test_classes_pred_series==self.y_test_classes_series)
-        logger.info('TRAIN accuracy (predicted class = target class): %0.1f%%'%(100*train_true_pred_prob))
-        logger.info('TEST accuracy (predicted class = target class): %0.1f%%'%(100*test_true_pred_prob))
-        logger.info('compare with random accuracy = 1/%d classes = %0.1f%%'%(len(self.classes_list),100/len(self.classes_list)))
+        train_accuracy=np.mean(self.y_train_classes_pred_series==self.y_train_classes_series)
+        test_accuracy=np.mean(self.y_test_classes_pred_series==self.y_test_classes_series)
+        logger.info('TRAIN accuracy, mean(predicted class == target class): %0.1f%%'%(100*train_accuracy))
+        logger.info('TEST accuracy, mean(predicted class == target class): %0.1f%%'%(100*test_accuracy))  
+        logger.info('compare with random accuracy = 1/class_number = %0.1f%%'%(100/len(self.classes_list)))
         
-        
-        # calculating train_sucess_df here so it can be used in decide_position
-        logger.info('only true/false positives are interesting, not true/false negatives - not interested to find all the X class occurancies, but to be true when predicting class X')
-        
-        train_sucess_array=np.zeros((len(self.y_train_classes_pred_series),len(self.classes_list)))
-        train_sucess_df_columns=[]
-        test_sucess_array=np.zeros((len(self.y_test_classes_pred_series),len(self.classes_list)))
-        test_sucess_df_columns=[]
+        # calculating train_positives_df here so it can be used in decide_position
+        train_positives_array=np.zeros((len(self.y_train_classes_pred_series),len(self.classes_list)))
+        train_positives_df_columns=[]
+        test_positives_array=np.zeros((len(self.y_test_classes_pred_series),len(self.classes_list)))
+        test_positives_df_columns=[]
         
         for cls in range(len(self.classes_list)):
             cls_value=self.classes_list[cls]
-            train_sucess_array[(self.y_train_classes_pred_series==cls_value) & (self.y_train_classes_series==cls_value),cls]=1 # true positive for class cls_value
-            train_sucess_array[(self.y_train_classes_pred_series==cls_value) & (self.y_train_classes_series!=cls_value),cls]=-1 # false positive for class cls_value
-            train_sucess_df_columns+=['train true/false pos: class %d'%cls_value]
+            train_positives_array[(self.y_train_classes_pred_series==cls_value) & (self.y_train_classes_series==cls_value),cls]=1 # true positive for class cls_value
+            train_positives_array[(self.y_train_classes_pred_series==cls_value) & (self.y_train_classes_series!=cls_value),cls]=-1 # false positive for class cls_value
+            train_positives_df_columns+=['train true/false pos: class %d'%cls_value]
             
-            test_sucess_array[(self.y_test_classes_pred_series==cls_value) & (self.y_test_classes_series==cls_value),cls]=1 # true positive for class cls_value
-            test_sucess_array[(self.y_test_classes_pred_series==cls_value) & (self.y_test_classes_series!=cls_value),cls]=-1 # false positive for class cls_value
-            test_sucess_df_columns+=['test true/false pos: class %d'%cls_value]
+            test_positives_array[(self.y_test_classes_pred_series==cls_value) & (self.y_test_classes_series==cls_value),cls]=1 # true positive for class cls_value
+            test_positives_array[(self.y_test_classes_pred_series==cls_value) & (self.y_test_classes_series!=cls_value),cls]=-1 # false positive for class cls_value
+            test_positives_df_columns+=['test true/false pos: class %d'%cls_value]
         
-        self.train_sucess_df=pd.DataFrame(train_sucess_array,
+        self.train_positives_df=pd.DataFrame(train_positives_array,
                 index=self.y_train_classes_pred_series.index,
-                columns=train_sucess_df_columns)
-        self.test_sucess_df=pd.DataFrame(test_sucess_array,
+                columns=train_positives_df_columns)
+        self.test_positives_df=pd.DataFrame(test_positives_array,
                 index=self.y_test_classes_pred_series.index,
-                columns=test_sucess_df_columns)
+                columns=test_positives_df_columns)
         
-        train_true_pos_class_prob=np.sum(train_sucess_array==1,axis=0)/(np.sum(train_sucess_array==1,axis=0)+np.sum(train_sucess_array==-1,axis=0))
-        test_true_class_pos_prob=np.sum(test_sucess_array==1,axis=0)/(np.sum(test_sucess_array==1,axis=0)+np.sum(test_sucess_array==-1,axis=0))
+        train_precision=np.sum(train_positives_array==1,axis=0)/(np.sum(train_positives_array==1,axis=0)+np.sum(train_positives_array==-1,axis=0))
+        test_precision=np.sum(test_positives_array==1,axis=0)/(np.sum(test_positives_array==1,axis=0)+np.sum(test_positives_array==-1,axis=0))
         
-        self.true_pos_df=pd.DataFrame(np.array([train_true_pos_class_prob,test_true_class_pos_prob]).T,
+        self.precision_df=pd.DataFrame(np.array([train_precision,test_precision]).T,
                 index=self.classes_list,
-                columns=['train true pos prob','test true pos prob'])
-        self.true_pos_df.index.name='class'
-        
+                columns=['train precision','test precision'])
+        self.precision_df.index.name='class'
+
     def plot_prediction(self):
-        print('predicted true positive probabilities:\n',self.true_pos_df)
-        
-        train_sucess_df_no_zeros=self.train_sucess_df.copy()
-        train_sucess_df_no_zeros[train_sucess_df_no_zeros==0]=np.nan
-        test_sucess_df_no_zeros=self.test_sucess_df.copy()
-        test_sucess_df_no_zeros[test_sucess_df_no_zeros==0]=np.nan
+        train_positives_df_no_zeros=self.train_positives_df.copy()
+        train_positives_df_no_zeros[train_positives_df_no_zeros==0]=np.nan
+        test_positives_df_no_zeros=self.test_positives_df.copy()
+        test_positives_df_no_zeros[test_positives_df_no_zeros==0]=np.nan
         
         plt.figure()
         ax=plt.subplot(411)
-        plt.plot(self.y_train_classes_series,'bo',markerfacecolor='none')
-        plt.plot(self.y_train_classes_pred_series,'c.')
-        plt.plot(self.y_test_classes_series,'ko',markerfacecolor='none')
-        plt.plot(self.y_test_classes_pred_series,'r.')
+        plt.plot(self.y_train_classes_series,'bo',label='target (train)')
+        plt.plot(self.y_train_classes_pred_series,'c.',label='predicted target (train)')
+        plt.plot(self.y_test_classes_series,'ko',label='target (test)')
+        plt.plot(self.y_test_classes_pred_series,'r.',label='predicted target (test)')
         
         plt.grid(True,which='major',axis='both')
-        plt.legend(['y_train_classes','y_train_classes_pred','y_test_classes','y_test_classes_pred'],loc='best')
+        legend_styler()
 #        plt.ylabel(self.y_train_classes_series.name)
         plt.ylabel('class')
         
         for cls in range(self.classes_number):
             plt.subplot(4,1,cls+2,sharex=ax)
-            plt.plot(train_sucess_df_no_zeros.iloc[:,cls],'c.',label='train')
-            plt.plot(test_sucess_df_no_zeros.iloc[:,cls],'r.',label='test')
+            plt.plot(train_positives_df_no_zeros.iloc[:,cls],'c.',label='train')
+            plt.plot(test_positives_df_no_zeros.iloc[:,cls],'r.',label='test')
         
             plt.grid(True,which='major',axis='both')
             plt.ylabel('class %d\npositives'%self.classes_list[cls])
             plt.yticks([1,-1], ('True','False'))
-            plt.legend(loc='best')
+            legend_styler()
         
-    def plot_accuracy(self,bins_number=200):
+        return ax
         
-        train_sucess_array=self.train_sucess_df.values
-        test_sucess_array=self.test_sucess_df.values
+    def plot_probabilities(self,bins_number=200):
+        train_positives_array=self.train_positives_df.values
+        test_positives_array=self.test_positives_df.values
         
-        train_sucess_prob_df=0*self.y_train_classes_pred_prob_df
-        train_sucess_prob_df[:]=np.nan
-        train_sucess_prob_df[train_sucess_array==1]=self.y_train_classes_pred_prob_df[train_sucess_array==1]
-        train_sucess_prob_df[train_sucess_array==-1]=-self.y_train_classes_pred_prob_df[train_sucess_array==-1] # insucessful prediction probabilities are taken as negative
-        train_sucess_prob_df.columns=['class %d successful prediction probabilities'%cls for cls in self.classes_list]
+        train_positives_prob_df=0*self.y_train_classes_pred_prob_df
+        train_positives_prob_df[:]=np.nan
+        train_positives_prob_df[train_positives_array==1]=self.y_train_classes_pred_prob_df[train_positives_array==1]
+        train_positives_prob_df[train_positives_array==-1]=-self.y_train_classes_pred_prob_df[train_positives_array==-1] # wrong prediction probabilities are taken as negative
+        train_positives_prob_df.columns=['class %d positives prob.'%cls for cls in self.classes_list]
         
-        test_sucess_prob_df=0*self.y_test_classes_pred_prob_df
-        test_sucess_prob_df[:]=np.nan
-        test_sucess_prob_df[test_sucess_array==1]=self.y_test_classes_pred_prob_df[test_sucess_array==1]
-        test_sucess_prob_df[test_sucess_array==-1]=-self.y_test_classes_pred_prob_df[test_sucess_array==-1] # insucessful prediction probabilities are taken as negative
-        test_sucess_prob_df.columns=['class %d successful prediction probabilities'%cls for cls in self.classes_list]
+        test_positives_prob_df=0*self.y_test_classes_pred_prob_df
+        test_positives_prob_df[:]=np.nan
+        test_positives_prob_df[test_positives_array==1]=self.y_test_classes_pred_prob_df[test_positives_array==1]
+        test_positives_prob_df[test_positives_array==-1]=-self.y_test_classes_pred_prob_df[test_positives_array==-1] # wrong prediction probabilities are taken as negative
+        test_positives_prob_df.columns=['class %d positives prob.'%cls for cls in self.classes_list]
             
-        train_sucess_prob_df.hist(bins=bins_number)
-        plt.suptitle('train true(>0)/false(<0) pos. probabilities histogram',fontsize=12)
+        train_positives_prob_df.hist(bins=bins_number)
+        plt.suptitle('train true(>0)/false(<0) positives prob. histogram',fontsize=12)
         
-        test_sucess_prob_df.hist(bins=bins_number)
-        plt.suptitle('test true(>0)/false(<0) pos. prediction probabilities histogram',fontsize=12)
+        test_positives_prob_df.hist(bins=bins_number)
+        plt.suptitle('test true(>0)/false(<0) positives prob. histogram',fontsize=12)
 
     def decide_position(self,pred_mode='max pred_prob'):
         """created on 2018/08/31 based on FinancialML 9.0
@@ -1118,7 +1154,7 @@ class classification_shallow(classification):
             graph.render(datetime.strftime(datetime.now(),filenames_time_format)+' decision tree') 
             graph.view()
 
-    def visualize_coeff(self,max_coeff_to_show=0,attribute_names_list=0,
+    def visualize_coeff(self,max_coeff_to_show=0,attribute_names_list=None,
                         normalization=True,mode='separate',bottom_margin=0.3):
         """created on 2018/09/07 to visualize fitted model coefficients for each feature (plotted as bars)
         mode -
@@ -1134,7 +1170,7 @@ class classification_shallow(classification):
             the number of raw attributes)
         """
         coeff_height_array=self.classifier.coef_
-        if attribute_names_list==0:
+        if attribute_names_list==None:
             col_names=list(self.X_train_df.columns)
         elif len(attribute_names_list)==len(self.X_train_df.columns):
             col_names=attribute_names_list
@@ -1183,7 +1219,7 @@ class classification_shallow(classification):
         if mode=='together':
             plt.ylabel(ylabel)
             plt.title(title)
-            plt.legend(['class %d'%cls for cls in self.classes_list],loc='best')
+            legend_styler(['class %d'%cls for cls in self.classes_list])
             plt.grid(True,which='major',axis='both')
             plt.xticks(rotation='vertical')
             plt.gcf().subplots_adjust(bottom=bottom_margin)
@@ -1215,29 +1251,6 @@ class classification_deep(classification):
                  plotting=True):
         """created on 2018/09/25
         classification tutorial: https://www.tensorflow.org/tutorials/keras/basic_classification
-        
-        http://keras.io/layers/core/#activation
-            activations: 'tanh','relu','sigmoid','linear'
-        
-        http://keras.io/regularizers/
-            available penalties:
-                keras.regularizers.l1(0.)
-                keras.regularizers.l2(0.)
-                keras.regularizers.l1_l2(l1=0.01, l2=0.01)
-        
-        model.fit:
-            documentation: http://www.tensorflow.org/api_docs/python/tf/keras/Model#fit
-            returns history object: its .history attribute is a record of training loss values and metrics values at successive epochs, as well as validation loss values and validation metrics values (if applicable).
-            inputs:
-                batch_size: (integer, default: 32) number of samples per gradient update. If unspecified, batch_size will default to 32. Do not specify the batch_size if your data is in the form of symbolic tensors, datasets, or dataset iterators (since they generate batches).
-                steps_per_epoch: (integer or None) total number of steps (batches of samples) before declaring one epoch finished and starting the next epoch. When training with input tensors such as TensorFlow data tensors, the default None is equal to the number of samples in your dataset divided by the batch size, or 1 if that cannot be determined.
-                callbacks: stops training when a monitored quantity has stopped improving. 
-                    documentation: http://www.tensorflow.org/api_docs/python/tf/keras/callbacks/EarlyStopping    
-                    inputs:
-                        min_delta: minimum change in the monitored quantity to qualify as an improvement, i.e. an absolute change of less than min_delta, will count as no improvement.
-                        patience: number of epochs with no improvement after which training will be stopped.
-                        mode: one of {auto, min, max}. In min mode, training will stop when the quantity monitored has stopped decreasing; in max mode it will stop when the quantity monitored has stopped increasing; in auto mode, the direction is automatically inferred from the name of the monitored quantity.
-                    
         """     
         import tensorflow as tf
         from tensorflow import keras
@@ -1269,7 +1282,7 @@ class classification_deep(classification):
                           batch_size=batch_size,epochs=epochs,validation_split=validation_split,
                           callbacks=[callbk])
         toc=time()
-        logger.info('training completed in %.3f seconds, saved Keras model into self.regressor (and history into self.history)'%(toc-tic))
+        logger.info('training completed in %.3f seconds, saved model into self.regressor (and history into self.history)'%(toc-tic))
         model.summary()
         self.classifier=model
         self.classes_list=list(np.arange(self.classes_number)-1) # -1 since my class labels are -1,0,1 but the supported labels are 0,1,...
@@ -1281,7 +1294,7 @@ class classification_deep(classification):
         val_loss=np.array(self.history.history['val_loss'])
         plt.plot(self.history.epoch,train_loss**0.5,label='train')
         plt.plot(self.history.epoch,val_loss**0.5,label='validation')
-        plt.legend()
+        legend_styler()
         plt.ylabel('sqrt(loss)')
         plt.title('loss = sparse_categorical_crossentropy + regularization')
         plt.grid(True,which='major',axis='both')
@@ -1291,7 +1304,7 @@ class classification_deep(classification):
         val_accuracy=np.array(self.history.history['val_acc']) # if using validation and metrics contains 'accuracy'
         plt.plot(self.history.epoch,train_accuracy,label='train')
         plt.plot(self.history.epoch,val_accuracy,label='validation')
-        plt.legend()
+        legend_styler()
         plt.xlabel('epoch (a single iteration on all training data once)')
         plt.ylabel('accuracy')
         plt.grid(True,which='major',axis='both')
@@ -1379,7 +1392,7 @@ class trading:
             plt.plot(self.realized_portfolio_series.index,
                      self.realized_portfolio_series.values,'k.',label='realized')
             plt.grid(True,which='major',axis='both')
-            plt.legend()
+            legend_styler()
             plt.ylabel('portfolio(t) / portfolio(t0)')
 
     def plot_trades(self):
@@ -1495,12 +1508,13 @@ class CV_split:
         plt.grid(True,which='major',axis='both')
 
 def whiten(data_df,white_y_mean,white_y_std,white_X_mean,white_X_std,
-    using_only_y_for_white_noise=False,frequency=None,debugging=False):
+    using_only_y_for_white_noise=False,frequency=None,seed=0,debugging=False):
     """v1 created on 2018/09/01 for white data generation to check causality breaking!
     
     to check causality: use this fucntion to convert the data to white noise,
         include target as features when building features - 
-        only then, if the regression error std is not white_y_std - causality was broken along the way!
+        only then, if the regression error std is not white_y_std - 
+        causality was broken along the way!
     
     Update log:
         v2 (OzML_v4) - 2018/09/19: adding frequency to control the final 
@@ -1510,7 +1524,8 @@ def whiten(data_df,white_y_mean,white_y_std,white_X_mean,white_X_std,
         each according to the inputs for mean and std of each.
     If frequency=None (default) - using the same size (and index) of the data, 
         otherwise changing to the supplied frequency, for example '1Hr','30Min'.
-    if using_only_y_for_white_noise: white_df is made only from white_target.
+    If using_only_y_for_white_noise: white_df is made only from white_target.
+    seed: the random seed (int) only for the target distribution.
     
     returns: (white_df,white_attribute_names_list,white_target_name)
     """
@@ -1519,10 +1534,11 @@ def whiten(data_df,white_y_mean,white_y_std,white_X_mean,white_X_std,
     
     if frequency!=None:
         data_df=data_df.asfreq(frequency)
-    
+        
     white_noise_target_name='rand target with mu,std=%.1f,%.1f'%(white_y_mean,white_y_std)
     white_target_series=pd.Series(
-            np.random.normal(loc=white_y_mean,scale=white_y_std,size=len(data_df)),
+            np.random.RandomState(seed=seed).normal(
+                    loc=white_y_mean,scale=white_y_std,size=len(data_df)),
             index=data_df.index,
             name=white_noise_target_name)
     white_target_name=white_target_series.name
