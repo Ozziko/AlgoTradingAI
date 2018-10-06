@@ -611,7 +611,7 @@ class regression:
         
         return self.pred_test_position_series
 
-class regerssion_shallow(regression):
+class regression_shallow(regression):
     def train_skLinearRegression(self):     
         # http://scikit-learn.org/stable/auto_examples/linear_model/plot_ols.html
         self.regressor=linear_model.LinearRegression()
@@ -782,7 +782,7 @@ class regerssion_shallow(regression):
         plt.xticks(rotation='vertical')
         plt.gcf().subplots_adjust(bottom=bottom_margin)
 
-class regerssion_deep(regression):
+class regression_deep(regression):
     def train_NN(self,model=None,optimizer=None,learning_rate=0.01,
                  max_epochs=100,batch_size=100,shuffle=False,validation_split=0.25,
                  training_patience=10,min_dloss_to_stop=0.01,verbose=1):
@@ -1246,27 +1246,57 @@ class classification_deep(classification):
         self.y_test_classes_pred_series=y_test_numclasses_pred_prob_df.idxmax(axis=1)
         self.y_test_classes_pred_series.name=self.y_test_classes_series.name+' predicted'
         
-    def train_NN(self,epochs=100,batch_size=100,validation_split=0.25,learning_rate=0.01,
-                 training_patience=10,min_dloss_to_stop=0.01,
-                 plotting=True):
+    def train_NN(self,model=None,optimizer=None,learning_rate=0.01,
+                 max_epochs=100,batch_size=100,shuffle=False,validation_split=0.25,
+                 training_patience=10,min_dloss_to_stop=0.01,verbose=1):
         """created on 2018/09/25
         classification tutorial: https://www.tensorflow.org/tutorials/keras/basic_classification
+        
+        Update Log:
+            v2 (OzML_v4)- 2018/10/04: added parameters, changed to allow 
+                building the model and setting the optimizer externally and 
+                pass it to here.
+                
+        http://keras.io/layers/core/#activation
+            activations: 'tanh','relu','sigmoid','linear'
+        
+        http://keras.io/regularizers/
+            available penalties:
+                keras.regularizers.l1(0.)
+                keras.regularizers.l2(0.)
+                keras.regularizers.l1_l2(l1=0.01, l2=0.01)
+        
+        model.fit:
+            documentation: http://www.tensorflow.org/api_docs/python/tf/keras/Model#fit
+            returns history object: its .history attribute is a record of training loss values and metrics values at successive epochs, as well as validation loss values and validation metrics values (if applicable).
+            inputs:
+                batch_size: (integer, default: 32) number of samples per gradient update. If unspecified, batch_size will default to 32. Do not specify the batch_size if your data is in the form of symbolic tensors, datasets, or dataset iterators (since they generate batches).
+                steps_per_epoch: (integer or None) total number of steps (batches of samples) before declaring one epoch finished and starting the next epoch. When training with input tensors such as TensorFlow data tensors, the default None is equal to the number of samples in your dataset divided by the batch size, or 1 if that cannot be determined.
+                callbacks: stops training when a monitored quantity has stopped improving. 
+                    documentation: http://www.tensorflow.org/api_docs/python/tf/keras/callbacks/EarlyStopping    
+                    inputs:
+                        min_delta: minimum change in the monitored quantity to qualify as an improvement, i.e. an absolute change of less than min_delta, will count as no improvement.
+                        patience: number of epochs with no improvement after which training will be stopped.
+                        mode: one of {auto, min, max}. In min mode, training will stop when the quantity monitored has stopped decreasing; in max mode it will stop when the quantity monitored has stopped increasing; in auto mode, the direction is automatically inferred from the name of the monitored quantity.
+                    
         """     
         import tensorflow as tf
         from tensorflow import keras
         
         self.classes_number=len(set(self.y_train_classes_series.values))
         
-        model = keras.Sequential()
-        model.add(keras.layers.Dense(50,input_shape=(len(self.X_train_df.columns),),activation='relu'))
-#        model.add(keras.layers.Dense(10, activation='tanh',
-#                                      kernel_regularizer=keras.regularizers.l1(0.1)))
-        model.add(keras.layers.Dense(50, activation='tanh'))
-        model.add(keras.layers.Dense(50, activation='relu'))
-        model.add(keras.layers.Dense(self.classes_number,activation='softmax'))
+        if model==None:
+            model = keras.Sequential()
+            model.add(keras.layers.Dense(50,input_shape=(len(self.X_train_df.columns),),activation='relu'))
+    #        model.add(keras.layers.Dense(10, activation='tanh',
+    #                                      kernel_regularizer=keras.regularizers.l1(0.1)))
+            model.add(keras.layers.Dense(50, activation='tanh'))
+            model.add(keras.layers.Dense(50, activation='relu'))
+            model.add(keras.layers.Dense(self.classes_number,activation='softmax'))
         
-        optimizer=tf.train.GradientDescentOptimizer(learning_rate=learning_rate)
-#        optimizer=tf.train.RMSPropOptimizer(learning_rate=learning_rate)
+        if optimizer==None:
+            optimizer=tf.train.GradientDescentOptimizer(learning_rate=learning_rate)
+    #        optimizer=tf.train.RMSPropOptimizer(learning_rate=learning_rate)
         
         model.compile(optimizer=optimizer,
                       loss='sparse_categorical_crossentropy',
@@ -1279,11 +1309,11 @@ class classification_deep(classification):
         
         target_values=self.y_train_classes_series.values+1 # +1 since my class labels are -1,0,1 but the supported labels are 0,1,...
         self.history=model.fit(x=self.X_train_df.values,y=target_values,
-                          batch_size=batch_size,epochs=epochs,validation_split=validation_split,
+                          batch_size=batch_size,epochs=max_epochs,shuffle=shuffle,
+                          validation_split=validation_split,verbose=verbose,
                           callbacks=[callbk])
         toc=time()
-        logger.info('training completed in %.3f seconds, saved model into self.regressor (and history into self.history)'%(toc-tic))
-        model.summary()
+        logger.info('training completed in %.3f seconds, saved Keras model into self.regressor (and history into self.history)'%(toc-tic))
         self.classifier=model
         self.classes_list=list(np.arange(self.classes_number)-1) # -1 since my class labels are -1,0,1 but the supported labels are 0,1,...
         
@@ -1308,6 +1338,7 @@ class classification_deep(classification):
         plt.xlabel('epoch (a single iteration on all training data once)')
         plt.ylabel('accuracy')
         plt.grid(True,which='major',axis='both')
+
 class trading:
     """v1 created on ~2018/08/23, defined as class to save all the trading 
         calculation results conveniently
