@@ -1,7 +1,9 @@
 # -*- coding: utf-8 -*-
-"""@author: Oz Livneh (oz.livneh@gmail.com), all rights reserved, use at your own risk
+"""@author: Oz Livneh (oz.livneh@gmail.com),
+    all rights reserved, use at your own risk.
 
-See the explanation and demonstration at http://bit.ly/OzTradingAI
+See the explanation and demonstration at the Colab notebook:
+    http://bit.ly/OzTradingAI
 
 Compatibility:
     developed on anaconda 5.2, containing:
@@ -1224,121 +1226,6 @@ class classification_shallow(classification):
             plt.xticks(rotation='vertical')
             plt.gcf().subplots_adjust(bottom=bottom_margin)
 
-class classification_deep(classification):
-    def predict(self):
-        self.y_train_classes_pred_prob_df=pd.DataFrame( # in a NN the outputs are not probabilities but it is easier to use this name...
-                        self.classifier.predict(self.X_train_df.values)-1, # -1 since the supported classes are 0,1,... and mine are -1,0,1
-                        columns=['class %d predicted probability'%cls for cls in self.classes_list],
-                        index=self.y_train_classes_series.index)
-        
-        y_train_numclasses_pred_prob_df=self.y_train_classes_pred_prob_df.copy()
-        y_train_numclasses_pred_prob_df.columns=self.classes_list
-        self.y_train_classes_pred_series=y_train_numclasses_pred_prob_df.idxmax(axis=1)
-        self.y_train_classes_pred_series.name=self.y_train_classes_series.name+' predicted'
-        
-        self.y_test_classes_pred_prob_df=pd.DataFrame( # in a NN the outputs are not probabilities but it is easier to use this name...
-                        self.classifier.predict(self.X_test_df.values)-1, # -1 since the supported classes are 0,1,... and mine are -1,0,1
-                        columns=['class %d predicted probability'%cls for cls in self.classes_list],
-                        index=self.y_test_classes_series.index)
-        
-        y_test_numclasses_pred_prob_df=self.y_test_classes_pred_prob_df.copy()
-        y_test_numclasses_pred_prob_df.columns=self.classes_list
-        self.y_test_classes_pred_series=y_test_numclasses_pred_prob_df.idxmax(axis=1)
-        self.y_test_classes_pred_series.name=self.y_test_classes_series.name+' predicted'
-        
-    def train_NN(self,model=None,optimizer=None,learning_rate=0.01,
-                 max_epochs=100,batch_size=100,shuffle=False,validation_split=0.25,
-                 training_patience=10,min_dloss_to_stop=0.01,verbose=1):
-        """created on 2018/09/25
-        classification tutorial: https://www.tensorflow.org/tutorials/keras/basic_classification
-        
-        Update Log:
-            v2 (OzML_v4)- 2018/10/04: added parameters, changed to allow 
-                building the model and setting the optimizer externally and 
-                pass it to here.
-                
-        http://keras.io/layers/core/#activation
-            activations: 'tanh','relu','sigmoid','linear'
-        
-        http://keras.io/regularizers/
-            available penalties:
-                keras.regularizers.l1(0.)
-                keras.regularizers.l2(0.)
-                keras.regularizers.l1_l2(l1=0.01, l2=0.01)
-        
-        model.fit:
-            documentation: http://www.tensorflow.org/api_docs/python/tf/keras/Model#fit
-            returns history object: its .history attribute is a record of training loss values and metrics values at successive epochs, as well as validation loss values and validation metrics values (if applicable).
-            inputs:
-                batch_size: (integer, default: 32) number of samples per gradient update. If unspecified, batch_size will default to 32. Do not specify the batch_size if your data is in the form of symbolic tensors, datasets, or dataset iterators (since they generate batches).
-                steps_per_epoch: (integer or None) total number of steps (batches of samples) before declaring one epoch finished and starting the next epoch. When training with input tensors such as TensorFlow data tensors, the default None is equal to the number of samples in your dataset divided by the batch size, or 1 if that cannot be determined.
-                callbacks: stops training when a monitored quantity has stopped improving. 
-                    documentation: http://www.tensorflow.org/api_docs/python/tf/keras/callbacks/EarlyStopping    
-                    inputs:
-                        min_delta: minimum change in the monitored quantity to qualify as an improvement, i.e. an absolute change of less than min_delta, will count as no improvement.
-                        patience: number of epochs with no improvement after which training will be stopped.
-                        mode: one of {auto, min, max}. In min mode, training will stop when the quantity monitored has stopped decreasing; in max mode it will stop when the quantity monitored has stopped increasing; in auto mode, the direction is automatically inferred from the name of the monitored quantity.
-                    
-        """     
-        import tensorflow as tf
-        from tensorflow import keras
-        
-        self.classes_number=len(set(self.y_train_classes_series.values))
-        
-        if model==None:
-            model = keras.Sequential()
-            model.add(keras.layers.Dense(50,input_shape=(len(self.X_train_df.columns),),activation='relu'))
-    #        model.add(keras.layers.Dense(10, activation='tanh',
-    #                                      kernel_regularizer=keras.regularizers.l1(0.1)))
-            model.add(keras.layers.Dense(50, activation='tanh'))
-            model.add(keras.layers.Dense(50, activation='relu'))
-            model.add(keras.layers.Dense(self.classes_number,activation='softmax'))
-        
-        if optimizer==None:
-            optimizer=tf.train.GradientDescentOptimizer(learning_rate=learning_rate)
-    #        optimizer=tf.train.RMSPropOptimizer(learning_rate=learning_rate)
-        
-        model.compile(optimizer=optimizer,
-                      loss='sparse_categorical_crossentropy',
-                      metrics=['accuracy'])
-        callbk=keras.callbacks.EarlyStopping(monitor='val_loss', # can stop also on monitor='loss'
-                    patience=training_patience,min_delta=min_dloss_to_stop)
-        
-        logger.info('NN training started on TF')
-        tic=time()
-        
-        target_values=self.y_train_classes_series.values+1 # +1 since my class labels are -1,0,1 but the supported labels are 0,1,...
-        self.history=model.fit(x=self.X_train_df.values,y=target_values,
-                          batch_size=batch_size,epochs=max_epochs,shuffle=shuffle,
-                          validation_split=validation_split,verbose=verbose,
-                          callbacks=[callbk])
-        toc=time()
-        logger.info('training completed in %.3f seconds, saved Keras model into self.regressor (and history into self.history)'%(toc-tic))
-        self.classifier=model
-        self.classes_list=list(np.arange(self.classes_number)-1) # -1 since my class labels are -1,0,1 but the supported labels are 0,1,...
-        
-    def plot_training(self):
-        plt.figure()
-        plt.subplot(2,1,1)
-        train_loss=np.array(self.history.history['loss'])
-        val_loss=np.array(self.history.history['val_loss'])
-        plt.plot(self.history.epoch,train_loss**0.5,label='train')
-        plt.plot(self.history.epoch,val_loss**0.5,label='validation')
-        legend_styler()
-        plt.ylabel('sqrt(loss)')
-        plt.title('loss = sparse_categorical_crossentropy + regularization')
-        plt.grid(True,which='major',axis='both')
-        
-        plt.subplot(2,1,2)
-        train_accuracy=np.array(self.history.history['acc']) # if metrics contains 'accuracy' 
-        val_accuracy=np.array(self.history.history['val_acc']) # if using validation and metrics contains 'accuracy'
-        plt.plot(self.history.epoch,train_accuracy,label='train')
-        plt.plot(self.history.epoch,val_accuracy,label='validation')
-        legend_styler()
-        plt.xlabel('epoch (a single iteration on all training data once)')
-        plt.ylabel('accuracy')
-        plt.grid(True,which='major',axis='both')
-
 class trading:
     """v1 created on ~2018/08/23, defined as class to save all the trading 
         calculation results conveniently
@@ -1357,8 +1244,8 @@ class trading:
                 assumed that y_test_series is % differences)
             * moved the plotting outside of init, to its own method
     """
-    def __init__(self,pred_test_position_series,y_test_series,plotting=True):
-        y_test_multiplications_series=y_test_series/100+1
+    def __init__(self,pred_test_position_series,y_test_diff_percents_series):
+        y_test_multiplications_series=y_test_diff_percents_series/100+1
         
         portfolio_multiplications_series=0*y_test_multiplications_series+1
         portfolio_multiplications_series.name='portfolio multiplications'
@@ -1388,7 +1275,8 @@ class trading:
             realized_portfolio_values_list.append(realtime_portfolio_array[-1])
             realized_portfolio_dates_list.append(portfolio_multiplications_series.index[-1])
         
-        test_duration_years=timedelta.total_seconds(y_test_series.index[-1]-y_test_series.index[0])/(365*24*60*60)                
+        test_duration_years=timedelta.total_seconds(
+                y_test_diff_percents_series.index[-1]-y_test_diff_percents_series.index[0])/(365*24*60*60)                
         self.total_portfolio_multiplication=realtime_portfolio_array[-1]
         self.total_portfolio_multiplication_annualized=self.total_portfolio_multiplication**(1/test_duration_years)
         
