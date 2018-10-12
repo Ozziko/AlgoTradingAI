@@ -31,6 +31,8 @@ import logging
 from time import time
 from datetime import timedelta, datetime
 from sklearn import linear_model
+import tensorflow as tf
+from tensorflow import keras
 
 filenames_time_format='%Y-%m-%d %H-%M-%S'
 logging_time_format='%H:%M:%S'
@@ -785,16 +787,40 @@ class regression_shallow(regression):
         plt.gcf().subplots_adjust(bottom=bottom_margin)
 
 class regression_deep(regression):
-    def train_NN(self,model=None,optimizer=None,learning_rate=0.01,
-                 max_epochs=100,batch_size=100,shuffle=False,validation_split=0.25,
-                 training_patience=10,min_dloss_to_stop=0.01,verbose=1):
+    """created on 2018/09/07
+    
+    Update Log:
+            v2 (OzML_v4) - 2018/09/16: inherits regression_v2
+            v3 (OzML_v5) - 2018/10/08: 
+                * saved validation_split in self,
+                    treated self.validation_split==0 in all methods for no 
+                    validation.
+                * renamed train_NN to train_TF_NN
+            v3 (OzML_v5) - 2018/10/10-12: adapting all methods for LSTM and 
+                predict_dynamically:
+                * changing all methods to use self.history_dic instead of 
+                    self.history.history, since I don't know how to save the 
+                    Keras history object for all training in LSTM, but I can 
+                    create self.history_dic in the structure of Keras 
+                    history.history.
+                * saving to self: training max_epochs, train_completed_epochs,
+                    trained_weights
+    """     
+    def train_TF_NN(self,validation_split, # must be stated even if not used here, since it is saved to self for other methods
+            model=None,optimizer=None,callback=None,
+            max_epochs=100,batch_size=100,shuffle=False,
+            learning_rate=0.01, # optimizer parameters
+            training_patience=10,min_dloss_to_stop=0.01, # callback parameters
+            verbose=1):
         """created on 2018/09/07
         regression example: http://www.tensorflow.org/tutorials/keras/basic_regression
         
         Update Log:
-            v2 (OzML_v4)- 2018/10/04: added parameters, changed to allow 
-                building the model and setting the optimizer externally and 
-                pass it to here.
+            v2 (OzML_v4)- 2018/10/04,06: added parameters, changed to allow 
+                building the model and optimizer externally and pass them.
+            v3 (OzML_v5)- 2018/10/08 treated validation_split=0 case and 
+                added callback=None as default to allow no callback, 
+                if required - set externally and pass it. 
         
         https://keras.io/layers/core/
             layers:
@@ -812,7 +838,7 @@ class regression_deep(regression):
                 keras.regularizers.l2(0.)
                 keras.regularizers.l1_l2(l1=0.01, l2=0.01)
         
-        http://www.tensorflow.org/api_docs/python/tf/keras/Model#fit            
+        http://www.tensorflow.org/api_docs/python/tf/keras/Model#fit
             batch_size: (integer, default: 32) number of samples per gradient update. If unspecified, batch_size will default to 32. Do not specify the batch_size if your data is in the form of symbolic tensors, datasets, or dataset iterators (since they generate batches).
             steps_per_epoch: (integer or None) total number of steps (batches of samples) before declaring one epoch finished and starting the next epoch. When training with input tensors such as TensorFlow data tensors, the default None is equal to the number of samples in your dataset divided by the batch size, or 1 if that cannot be determined.
             callbacks: stops training when a monitored quantity has stopped improving. 
@@ -831,19 +857,21 @@ class regression_deep(regression):
             shuffle: Boolean (whether to shuffle the training data before each epoch) or str (for 'batch'). 'batch' is a special option for dealing with the limitations of HDF5 data; it shuffles in batch-sized chunks. Has no effect when steps_per_epoch is not None.
             verbose: Integer. 0, 1, or 2. Verbosity mode. 0 = silent, 1 = progress bar, 2 = one line per epoch.
         """
-        import tensorflow as tf
-        from tensorflow import keras
+        if validation_split==0 and callback!=None:
+            raise RuntimeError('validation_split==0 and callback!=None were passed but cannot coexist. A callback requires validation_split>0, validation_split=0 can be passed with callback=None')
         
         if model==None:
             model=keras.Sequential()
-            model.add(keras.layers.Dense(50,input_shape=(len(self.X_train_df.columns),),activation='relu'))
-    #        model.add(keras.layers.Dense(10, activation='tanh',
+            input_shape=(len(self.X_train_df.columns),)
+            model.add(keras.layers.Dense(units=50,input_shape=input_shape,activation='relu'))
+    #        model.add(keras.layers.Dense(units=10,activation='tanh',
     #                                      kernel_regularizer=keras.regularizers.l1(0.1)))
-            model.add(keras.layers.Dense(50, activation='tanh'))
-            model.add(keras.layers.Dense(50, activation='relu'))
-            model.add(keras.layers.Dense(50, activation='relu'))
-            model.add(keras.layers.Dense(1))
-    #        model.add(keras.layers.Dense(1,kernel_regularizer=keras.regularizers.l1_l2(l1=0.01, l2=0.01)))
+            model.add(keras.layers.Dense(units=50,activation='tanh'))
+            model.add(keras.layers.Dense(units=50,activation='relu'))
+            model.add(keras.layers.Dropout(rate=0.3,seed=1))
+            model.add(keras.layers.Dense(units=50,activation='relu'))
+            model.add(keras.layers.Dense(units=1))
+    #        model.add(keras.layers.Dense(units=1,kernel_regularizer=keras.regularizers.l1_l2(l1=0.01, l2=0.01)))
         
         if optimizer==None:
             optimizer=tf.train.GradientDescentOptimizer(learning_rate=learning_rate)
@@ -854,40 +882,276 @@ class regression_deep(regression):
 #                metrics=[keras.metrics.MAE,keras.metrics.MSE])
                 loss='mean_squared_error',
                 metrics=['mean_squared_error'])
-        callbk=keras.callbacks.EarlyStopping(monitor='val_loss', # can stop also on monitor='loss'
-                    patience=training_patience,min_delta=min_dloss_to_stop)
-        
+            
         logger.info('NN training started on TF')
         tic=time()
-        self.history=model.fit(x=self.X_train_df.values,y=self.y_train_series.values,
-                          batch_size=batch_size,epochs=max_epochs,
-                          validation_split=validation_split,shuffle=shuffle,
-                          callbacks=[callbk],verbose=verbose)
+        if callback==None:
+            self.history=model.fit(x=self.X_train_df.values,y=self.y_train_series.values,
+                              batch_size=batch_size,epochs=max_epochs,
+                              validation_split=validation_split,shuffle=shuffle,
+                              verbose=verbose)
+        else:
+            self.history=model.fit(x=self.X_train_df.values,y=self.y_train_series.values,
+                              batch_size=batch_size,epochs=max_epochs,
+                              validation_split=validation_split,shuffle=shuffle,
+                              callbacks=[callback],verbose=verbose)
+                
         toc=time()
-        logger.info('training completed in %.3f seconds, saved model into self.regressor (and history into self.history)'%(toc-tic))
+        self.history_dic=self.history.history
+        self.train_completed_epochs=len(self.history_dic['mean_squared_error'])
+        logger.info('training completed in %.3f seconds, %d epochs completed, saved model into self.regressor'%(
+                toc-tic,self.train_completed_epochs))
         self.regressor=model
+        self.trained_weights=model.get_weights()
         
-        logger.info('final sqrt(MSE): (train,validation) = (%.2f,%.2f)'%(
-            self.history.history['mean_squared_error'][-1]**0.5,
-            self.history.history['val_mean_squared_error'][-1]**0.5))
+        if validation_split>0:
+            logger.info('final sqrt(MSE): (train,validation) = (%.2f,%.2f)'%(
+                self.history_dic['mean_squared_error'][-1]**0.5,
+                self.history_dic['val_mean_squared_error'][-1]**0.5))
+        else:
+            logger.info('final train sqrt(MSE): %.2f'%(
+                self.history_dic['mean_squared_error'][-1]**0.5))
         
-    def plot_training(self):
+        # saving inputs for other self methods
+        self.validation_split=validation_split
+        self.train_max_epochs=max_epochs
+
+    def train_TF_LSTM(self,validation_split,# must be stated even if not used here, since it is saved to self for other methods
+            model=None,optimizer=None,callback=None,
+            max_epochs=100,
+            learning_rate=0.01, # optimizer parameters
+            training_patience=10,min_dloss_to_stop=0.01, # callback parameters
+            verbose=1):
+        """created on 2018/10/10, adapting .train_TF_NN() method to train an 
+            LSTM, see there the docstring explanations for anything not related 
+            to LSTM. To make predictions after training, use 
+            self.predict_dynamically() method.
+        
+        main source: http://machinelearningmastery.com/time-series-forecasting-long-short-term-memory-network-python/
+        
+        http://keras.io/layers/recurrent/
+            stateful: Boolean (default False). If True, the last state for each sample at index i in a batch will be used as initial state for the sample of index i in the following batch.
+                This assumes a one-to-one mapping between samples in different successive batches.   
+                To enable statefulness: - specify stateful=True in the layer constructor. - specify a fixed batch size for your model, by passing if sequential model: batch_input_shape=(...) to the first layer in your model. else for functional model with 1 or more Input layers: batch_shape=(...) to all the first layers in your model. This is the expected shape of your inputs including the batch size. It should be a tuple of integers, e.g. (32, 10, 100). - specify shuffle=False when calling fit().
+                To reset the states of your model, call .reset_states() on either a specific layer, or on your entire model.
+        
+        For sequential data: stateful LSTM should be used with batch_size=1 
+            (batch_size>1 learns the data in a strange way, see the stateful 
+            explanation above). 
+            During training, the internal state is reset manually with
+            .reset_states() after each epoch, since the end of the dataset 
+            should not be connected with the beginning in the new epoch (it 
+            will happen if stateful=True).
+        """
+        if validation_split==0 and callback!=None:
+            raise RuntimeError('validation_split==0 and callback!=None were passed but cannot coexist. A callback requires validation_split>0, validation_split=0 can be passed with callback=None')
+        
+        X=self.X_train_df.values
+        X=X.reshape(X.shape[0],1,X.shape[1]) # re-shaping into (samples,timesteps,features) format, with timesteps=1 since each sample is a single timestep
+        
+        if model==None:
+            model=keras.Sequential()
+            batch_input_shape=(1,X.shape[1],X.shape[2]) # to enable statefulness, this is the input shape, (batch_size, timesteps, input_dim)
+            model.add(keras.layers.LSTM(units=50,
+                batch_input_shape=batch_input_shape,stateful=True,
+                activation='tanh',recurrent_activation='hard_sigmoid'))
+            model.add(keras.layers.Dense(units=1))
+            
+        if optimizer==None:
+            optimizer=tf.train.GradientDescentOptimizer(learning_rate=learning_rate)
+            #        optimizer=tf.train.RMSPropOptimizer(learning_rate=learning_rate)
+        
+        model.compile(optimizer=optimizer,
+#                loss=keras.losses.MSE,
+#                metrics=[keras.metrics.MAE,keras.metrics.MSE])
+                loss='mean_squared_error',
+                metrics=['mean_squared_error'])
+            
+        logger.info('LSTM training started on TF')
+        tic=time()
+        
+        hitory_loss_list=[]
+        hitory_MSE_list=[]
+        if validation_split>0:
+            hitory_val_loss_list=[]
+            hitory_val_MSE_list=[]
+        
+        for ep in range(max_epochs):
+            if callback==None:
+                history=model.fit(x=X,y=self.y_train_series.values,
+                                  batch_size=1,epochs=1,
+                                  validation_split=validation_split,shuffle=False,
+                                  verbose=verbose)
+            else:
+                history=model.fit(x=X,y=self.y_train_series.values,
+                                  batch_size=1,epochs=1,
+                                  validation_split=validation_split,shuffle=False,
+                                  callbacks=[callback],verbose=verbose)
+            model.reset_states()
+            hitory_loss_list.append(history.history['loss'][-1])
+            hitory_MSE_list.append(history.history['mean_squared_error'][-1])
+            if validation_split>0:
+                hitory_val_loss_list.append(history.history['val_loss'][-1])
+                hitory_val_MSE_list.append(history.history['val_mean_squared_error'][-1])
+                
+        toc=time()
+        self.train_completed_epochs=len(hitory_loss_list)
+        logger.info('training completed in %.3f seconds, %d epochs completed, saved model into self.regressor'%(
+                toc-tic,self.train_completed_epochs))
+        self.regressor=model
+        self.trained_weights=model.get_weights()
+        
+        if validation_split>0:
+            self.history_dic={'loss':hitory_loss_list,
+                              'mean_squared_error':hitory_MSE_list,
+                              'val_loss':hitory_val_loss_list,
+                              'val_mean_squared_error':hitory_val_MSE_list}
+            
+            logger.info('final sqrt(MSE): (train,validation) = (%.2f,%.2f)'%(
+                self.history_dic['mean_squared_error'][-1]**0.5,
+                self.history_dic['val_mean_squared_error'][-1]**0.5))
+            
+        else:
+            self.history_dic={'loss':hitory_loss_list,
+                              'mean_squared_error':hitory_MSE_list}
+            
+            logger.info('final train sqrt(MSE): %.2f'%(
+                self.history_dic['mean_squared_error'][-1]**0.5))
+        
+        # saving inputs for other self methods
+        self.validation_split=validation_split
+        self.train_max_epochs=max_epochs
+
+    def predict_dynamically(self,LSTM=False,online_learning_in_test=False,
+                            step_wise_train_prediction=False):
+        """created on 2018/10/11-12 for a dynamic test prediction - keeps training
+            the NN along the test period after each prediction is already made,
+            meaning that on each test sample it first predicts the target and 
+            appends to the prediction, then uses this sample to train the NN
+        
+        meant for TF NN, special care taken with LSTM
+        
+        LSTM warmup is taken care by predicting all the train preiod before 
+            starting test prediction: 
+            During training, the state is reset after each epoch. 
+            During prediction, the state should build up by each sample, and the 
+            initial state for the test period should be the last state in the 
+            train period - reached after predicting the whole train period. 
+        
+        step_wise_train_prediction=True is only to verify that a step-wise 
+            train prediction is not different than predicting all the train 
+            period in a single shot.
+            
+        main source: http://machinelearningmastery.com/time-series-forecasting-long-short-term-memory-network-python/
+        """
+        # train prediction, which is also a warmup for LSTM state if LSTM is used
+        if LSTM:
+            self.regressor.reset_states() # for safety (in training it resets after each epoch, in prediction - don't)
+        
+        if step_wise_train_prediction==False: # default, predicting train data in one shot
+            X_train=self.X_train_df.values
+            if LSTM:
+                X_train=X_train.reshape(X_train.shape[0],1,X_train.shape[1]) # re-shaping into (samples,timesteps,features) format, with timesteps=1 since each sample is a single timestep
+                y_test_pred_array=self.regressor.predict(X_train,batch_size=1) # since the LSTM is stateful batch_size=1 must be used for the same reason it is used in training, see explanation there
+            else:
+                y_test_pred_array=self.regressor.predict(X_train) # default batch_size is 32 so it can be parallelized, anyway does not affect the prediction results in ordinary NNs!
+        else: # predicting train data serially, step-wise
+            y_train_pred_list=[]
+            for i_dat in range(len(self.y_train_series)):
+                X_i=self.X_train_df.values[i_dat,:]
+                if LSTM:
+                    X_i=X_i.reshape(1,1,len(X_i)) # re-shaping into (samples,timesteps,features) format, with timesteps=1 since each sample is a single timestep
+                else:
+                    X_i=X_i.reshape(1,len(X_i))
+                
+                y_train_pred_list.append(self.regressor.predict(X_i,batch_size=1))
+                
+            y_test_pred_array=np.array(y_train_pred_list)
+            
+        self.y_train_pred_series=pd.Series(
+                y_test_pred_array.flatten(), # flattening the numpy (data_size,1) array into (data_size,) array!
+                name=self.y_train_series.name+' predicted',
+                index=self.y_train_series.index)
+        
+        # test prediction
+        y_test_pred_list=[]
+        if online_learning_in_test:
+            hitory_loss_list=[]
+            hitory_MSE_list=[]
+        for i_dat in range(len(self.y_test_series)):
+            X_i=self.X_test_df.values[i_dat,:]
+            if LSTM:
+                X_i=X_i.reshape(1,1,len(X_i)) # re-shaping into (samples,timesteps,features) format, with timesteps=1 since each sample is a single timestep
+            else:
+                X_i=X_i.reshape(1,len(X_i))
+            
+            y_test_pred_list.append(self.regressor.predict(X_i,batch_size=1))
+            if online_learning_in_test:
+                history=self.regressor.fit(x=X_i,
+                                y=self.y_train_series.values[i_dat].reshape(1,1),
+                                batch_size=1,epochs=1,validation_split=0,
+                                shuffle=False,verbose=0)
+                hitory_loss_list.append(history.history['loss'][-1])
+                hitory_MSE_list.append(history.history['mean_squared_error'][-1])
+        
+        self.y_test_pred_series=pd.Series(np.array(y_test_pred_list).flatten(),
+                name=self.y_test_series.name+' predicted',
+                index=self.y_test_series.index)
+        if online_learning_in_test:
+            self.history_dic_test={'loss':hitory_loss_list,
+                              'mean_squared_error':hitory_MSE_list}
+        
+        # calculating errors here to allow using regression.position_deciding() independently of regression.analyze()
+        self.train_err_series=self.y_train_pred_series-self.y_train_series
+        self.train_err_series.name='train error = predicted-target'
+        self.test_err_series=self.y_test_pred_series-self.y_test_series
+        self.test_err_series.name='test error = predicted-target'
+        
+        self.train_err_mean=np.mean(self.train_err_series.values)
+        self.train_err_std=np.std(self.train_err_series.values)
+        self.train_MSE=np.mean(self.train_err_series.values**2)
+        self.test_err_mean=np.mean(self.test_err_series.values)
+        self.test_err_std=np.std(self.test_err_series.values)
+        self.test_MSE=np.mean(self.test_err_series.values**2)
+        
+        logging.info('notice: error = prediction-target, MSE=mean(error^2)!=var(error)=mean((error-mean(error))^2)')
+        logger.info('TRAIN error: mean=%.3f, std=%.3f; sqrt(MSE)=%.3f'%(
+                self.train_err_mean,self.train_err_std,self.train_MSE**0.5))
+        logger.info('TEST error: mean=%.3f, std=%.3f; sqrt(MSE)=%.3f'%(
+                self.test_err_mean,self.test_err_std,self.test_MSE**0.5))
+
+    def plot_training(self,online_learning_in_test=False):
+        """created on 2018/09/16
+        
+        Update Log:
+            v2 (OzML_v5) - 2018/10/11: supports online_learning_in_test=True 
+                (from self.predict_dynamically())
+        """
         plt.figure()
         plt.subplot(2,1,1)
-        train_loss=np.array(self.history.history['loss'])
-        val_loss=np.array(self.history.history['val_loss'])
-        plt.plot(self.history.epoch,train_loss**0.5,label='train')
-        plt.plot(self.history.epoch,val_loss**0.5,label='validation')
+        train_loss=np.array(self.history_dic['loss'])
+        plt.plot(train_loss**0.5,label='train')
+        if self.validation_split>0:
+            val_loss=np.array(self.history_dic['val_loss'])
+            plt.plot(val_loss**0.5,label='validation')
+        if online_learning_in_test:
+            test_online_loss=np.array(self.history_dic_test['loss'])
+            test_online_x_axis=list(range(self.train_completed_epochs+1,self.train_completed_epochs+1+len(self.y_test_series)))
+            plt.plot(test_online_x_axis,test_online_loss**0.5,label='test (online)')
         legend_styler()
         plt.ylabel('sqrt(loss)')
         plt.title('loss=MSE+regularization')
         plt.grid(True,which='major',axis='both')
         
         plt.subplot(2,1,2)
-        train_MSE=np.array(self.history.history['mean_squared_error']) # if metrics contains 'mean_squared_error'
-        val_MSE=np.array(self.history.history['val_mean_squared_error']) # if using validation and metrics contains 'mean_squared_error'
-        plt.plot(self.history.epoch,train_MSE**0.5,label='train')
-        plt.plot(self.history.epoch,val_MSE**0.5,label='validation')
+        train_MSE=np.array(self.history_dic['mean_squared_error']) # if metrics contains 'mean_squared_error'
+        plt.plot(train_MSE**0.5,label='train')
+        if self.validation_split>0:
+            val_MSE=np.array(self.history_dic['val_mean_squared_error']) # if using validation and metrics contains 'mean_squared_error'    
+            plt.plot(val_MSE**0.5,label='validation')
+        if online_learning_in_test:
+            test_online_MSE=np.array(self.history_dic_test['mean_squared_error'])
+            plt.plot(test_online_x_axis,test_online_MSE**0.5,label='test (online)')
         legend_styler()
         plt.xlabel('epoch (completing batch updates on all training samples)')
         plt.ylabel('sqrt(MSE)')
