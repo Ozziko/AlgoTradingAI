@@ -739,52 +739,79 @@ class regression_shallow(regression):
             graph.render(datetime.strftime(datetime.now(),filenames_time_format)+' decision tree')
             graph.view()
             
-    def visualize_coeff(self,max_coeff_to_show=0,attribute_names_list=0,
-                        normalization=True,bottom_margin=0.3):
-        """created on 2018/09/06 to visualize fitted model coefficients for each feature (plotted as bars)
-        max_coeff_to_show -
-            =0: showing all coefficients
-            >0: showing only the max_coeff_to_show coefficients with the highest absolute value. 
-        bottom_margin should be increased if xticks are out of the canvas
-        normalization - by max(abs(coeff))
-        attribute_names_list - optional, using this as x labels instead of 
-            X_train_df.columns if possible (if the number of features is 
-            the number of raw attributes)
-        """
-        if normalization:
-            coeff_height=self.regressor.coef_/np.max(abs(self.regressor.coef_))
-            ylabel='normalized coefficients'
-        else:
-            coeff_height=self.regressor.coef_
-            ylabel='coefficients'
-        
-        if attribute_names_list==0:
-            col_names=list(self.X_train_df.columns)
-        elif len(attribute_names_list)==len(self.X_train_df.columns):
-            col_names=attribute_names_list
-        else:
-            raise RuntimeError('cannot use attribute_names_list as x labels since the number of features does not match the number of raw attributes (set to default=0 to solve: use feature names)!')
-            
+def visualize_weights(coeff_list,max_coeff_to_show=-1,
+                    attribute_names_list=None,model_label=None,
+                    normalization=True,comparative_mode=False,new_fig=True,
+                    opacity=1,color=None,bottom_margin=0.3):
+    """created on 2018/09/06 as a regression_shallow method to visualize 
+        learnt model weights for each feature (plotted as bars)
+    
+    Update log:
+        stand-alone (OzML_v5) - 2018/10/13: taken out of regression_shallow_v2 
+            to be a stand-alone function
+            * adapted to be used comparatively for different models.
+            * coeff_list input can also be a list (anyway, converted to a numpy 
+                array, flattened) for compatibility with TF NN weights.
+    
+    max_coeff_to_show -
+        <0: showing all coefficients, unsorted (ordered by coeff_list)
+        0: showing all coefficients descending by absolute value.
+        >0: showing only max_coeff_to_show coefficients,
+            descending by absolute value.
+    bottom_margin should be increased if xticks are out of the canvas
+    normalization - by max(abs(coeff_list))
+    attribute_names_list - optional, using this as x labels instead of 
+        x0,...,xn where n=len(coeff_list)-1
+    comparative_mode=True is meant for calling visualize_coeff to visualize 
+        coefficients of different models comparatively in one plot
+    opacity: bar opacity, opacity=1 is 100% opaque, opacity=0 is 100% transparent
+    new_fig=True creates a new figure, calling plt.figure()
+    """
+    coeff_array=np.array(coeff_list).flatten() # for compatibility with TF NN weights
+    
+    if comparative_mode:
+        if max_coeff_to_show>=0: logger.warn('max_coeff_to_show>=0 sorts coefficients and therefore not recommended with comparative_mode=True!')
+        if normalization: logger.warn('normalization=True is not recommended with comparative_mode=True!')
+    
+    if normalization:
+        coeff_height=coeff_array/np.max(abs(coeff_array))
+        ylabel='normalized weights'
+    else:
+        coeff_height=coeff_array
+        ylabel='weights'
+    
+    if attribute_names_list==None:
+        col_names=['x%d'%i for i in range(len(coeff_array))]
+    elif len(attribute_names_list)==len(coeff_array):
+        col_names=attribute_names_list
+    else:
+        raise RuntimeError('len(attribute_names_list)!=len(coeff), cannot use attribute_names_list as x labels (set to default, attribute_names_list=None, to solve: use x1,...,xn)!')
+    
+    title=''
+    if max_coeff_to_show>=0:
+        coeff_height_sorted_ind=np.argsort(-abs(coeff_height))
+        title='weights descending by absolute value'
         if max_coeff_to_show>0:
-            coeff_height_sorted_ind=np.argsort(-abs(coeff_height))
             coeff_height_sorted_ind=coeff_height_sorted_ind[:max_coeff_to_show]
-            coeff_height=coeff_height[coeff_height_sorted_ind]
-            col_names=[col_names[col] for col in coeff_height_sorted_ind]
-            title='%d coefficients with the highest absolute value'%max_coeff_to_show
-        else:
-            title='coefficient values'
-        
+            title='%d highest absolute weights, descending by absolute value'%max_coeff_to_show
+        coeff_height=coeff_height[coeff_height_sorted_ind]
+        col_names=[col_names[col] for col in coeff_height_sorted_ind]
+    
+    if new_fig:
         plt.figure()
-        
-#        plt.bar(col_names,coeff_height) # in Matplotlib 2.1 this line orders the bars by alphabetically, which is stupid and not my intention, therefore: 
-        plt.bar(range(len(col_names)),coeff_height) # for compatibility with Matplotlib 2.1
-        plt.xticks(range(len(col_names)),col_names) # for compatibility with Matplotlib 2.1
-        
-        plt.ylabel(ylabel)
-        plt.title(title)
-        plt.grid(True,which='major',axis='both')
-        plt.xticks(rotation='vertical')
-        plt.gcf().subplots_adjust(bottom=bottom_margin)
+    
+#        plt.bar(col_names,coeff_height) # in Matplotlib <2.1 this line orders the bars by alphabetically, which is stupid and not my intention, therefore: 
+    plt.bar(range(len(col_names)),coeff_height,
+            label=model_label,alpha=opacity,color=color) # for compatibility with Matplotlib <2.1
+    plt.xticks(range(len(col_names)),col_names) # for compatibility with Matplotlib <2.1
+    
+    plt.ylabel(ylabel)
+    plt.title(title)
+    plt.grid(True,which='major',axis='both')
+    plt.xticks(rotation='vertical')
+    plt.gcf().subplots_adjust(bottom=bottom_margin)
+    
+    if model_label!=None: legend_styler()
 
 class regression_deep(regression):
     """created on 2018/09/07
@@ -1420,75 +1447,75 @@ class classification_shallow(classification):
             graph.render(datetime.strftime(datetime.now(),filenames_time_format)+' decision tree') 
             graph.view()
 
-    def visualize_coeff(self,max_coeff_to_show=0,attribute_names_list=None,
-                        normalization=True,mode='separate',bottom_margin=0.3):
-        """created on 2018/09/07 to visualize fitted model coefficients for each feature (plotted as bars)
-        mode -
-            'separate': plots a figure for each class
-            'together': plots all classes on the same figure
-        max_coeff_to_show -
-            =0: showing all coefficients
-            >0: showing only the max_coeff_to_show coefficients with the highest absolute value. 
-        bottom_margin should be increased if xticks are out of the canvas
-        normalization - by max(abs(coeff))
-        attribute_names_list - optional, using this as x labels instead of 
-            X_train_df.columns if possible (if the number of features is 
-            the number of raw attributes)
-        """
-        coeff_height_array=self.classifier.coef_
-        if attribute_names_list==None:
-            col_names=list(self.X_train_df.columns)
-        elif len(attribute_names_list)==len(self.X_train_df.columns):
-            col_names=attribute_names_list
-        else:
-            raise RuntimeError('cannot use attribute_names_list as x labels since the number of features does not match the number of raw attributes (set to default=0 to solve: use feature names)!')
-            
-        if mode=='together':
-            plt.figure()
+def visualize_classes_weights(coeff_array,class_names_list,
+                    max_coeff_to_show=0,attribute_names_list=0,
+                    normalization=False,mode='together',new_fig=True,
+                    bottom_margin=0.3):
+    """created on 2018/09/07 as a classification_shallow method 
+        to visualize learnt model weights for each class
         
-        if normalization:
-            ylabel='normalized coefficients'
-        else:
-            ylabel='coefficients'
-        if max_coeff_to_show>0:
-            title='%d coefficients with the highest absolute value'%max_coeff_to_show
-        else:
-            title='coefficient values'
+    Update log:
+        stand-alone (OzML_v5) - 2018/10/13: moved out of 
+            classification_shallow_v2 to be a stand-alone function
         
-        for cls_idx in range(self.classes_number):
-            if normalization:
-                coeff_height=coeff_height_array[cls_idx,:]/np.max(abs(coeff_height_array[cls_idx,:]))
+    coeff_array.shape=(classes number,features number)
+    mode -
+        'subplots': plots a figure for each class:
+            * max_coeff_to_show<0: subplots share x axis,
+                removes xticks from all subplots except the last one, which 
+                uses attribute_names_list
+            * max_coeff_to_show>=0: each subplot x axis is independent, 
+                coefficients descending by absolute value,
+                x ticks by attribute_names_list=None (x0,x1,...).
+        'same plot': plots all classes on the same figure
+    -----------------------------------------------------------------------
+    all other inputs - according to visualize_coeff():
+    -----------------------------------------------------------------------
+    max_coeff_to_show -
+        <0: showing all coefficients, unsorted (ordered by coeff_list)
+        0: showing all coefficients descending by absolute value.
+        >0: showing only max_coeff_to_show coefficients,
+            descending by absolute value.
+    bottom_margin should be increased if xticks are out of the canvas
+    normalization - by max(abs(coeff))
+    attribute_names_list - optional, using this as x labels instead of 
+        x0,...,xn where n=len(coeff_list)-1
+    opacity: bar opacity, opacity=1 is 100% opaque, opacity=0 is 100% transparent
+    new_fig=True: plots everyting in a new figure
+    """
+    if coeff_array.shape[0]!=len(class_names_list):
+        raise RuntimeError('coeff_array.shape[0]!=len(class_names_list)')
+    
+    if new_fig: plt.figure()
+    
+    for cls_idx in range(len(class_names_list)):
+        cls_name='class %d'%class_names_list[cls_idx]
+        if mode=='subplots':
+            plt.subplot(len(class_names_list),1,cls_idx+1)
+            if max_coeff_to_show<0:
+                visualize_weights(coeff_array[cls_idx,:],
+                        max_coeff_to_show=max_coeff_to_show,
+                        attribute_names_list=attribute_names_list,
+                        normalization=normalization,comparative_mode=False,
+                        new_fig=False,opacity=1,color=None,bottom_margin=bottom_margin)
+                plt.subplots_adjust(hspace=0.3)
+                if cls_idx<len(class_names_list)-1: plt.xticks([],[])
             else:
-                coeff_height=coeff_height_array[cls_idx,:]
-            
-            if max_coeff_to_show>0:
-                coeff_height_sorted_ind=np.argsort(-abs(coeff_height))
-                coeff_height_sorted_ind=coeff_height_sorted_ind[:max_coeff_to_show]
-                coeff_height=coeff_height[coeff_height_sorted_ind]
-                col_names=[col_names[col] for col in coeff_height_sorted_ind]
-            
-            if mode=='together':
-#                plt.bar(col_names,coeff_height) # # in Matplotlib 2.1 this line orders the bars by alphabetically, which is stupid and not my intention, therefore:
-                plt.bar(range(len(col_names)),coeff_height) # for compatibility with Matplotlib 2.1
-                plt.xticks(range(len(col_names)),col_names) # for compatibility with Matplotlib 2.1
-            elif mode=='separate':
-                plt.figure()
-#                plt.bar(col_names,coeff_height) # # in Matplotlib 2.1 this line orders the bars by alphabetically, which is stupid and not my intention, therefore:
-                plt.bar(range(len(col_names)),coeff_height) # for compatibility with Matplotlib 2.1
-                plt.xticks(range(len(col_names)),col_names) # for compatibility with Matplotlib 2.1
-                plt.ylabel(ylabel)
-                plt.title('class %d '%(cls_idx)+title)
-                plt.grid(True,which='major',axis='both')
-                plt.xticks(rotation='vertical')
-                plt.gcf().subplots_adjust(bottom=bottom_margin)
-        
-        if mode=='together':
-            plt.ylabel(ylabel)
-            plt.title(title)
-            legend_styler(['class %d'%cls for cls in self.classes_list])
-            plt.grid(True,which='major',axis='both')
-            plt.xticks(rotation='vertical')
-            plt.gcf().subplots_adjust(bottom=bottom_margin)
+                visualize_weights(coeff_array[cls_idx,:],
+                        max_coeff_to_show=max_coeff_to_show,
+                        attribute_names_list=None,
+                        normalization=normalization,comparative_mode=False,
+                        new_fig=False,opacity=1,color=None,bottom_margin=0.1)
+                plt.subplots_adjust(hspace=0.8)
+            plt.title(cls_name)
+        elif mode=='same plot':
+            visualize_weights(coeff_array[cls_idx,:],model_label=cls_name,
+                max_coeff_to_show=max_coeff_to_show,
+                attribute_names_list=attribute_names_list,
+                normalization=normalization,comparative_mode=True,new_fig=False,
+                opacity=0.5,color=None,bottom_margin=bottom_margin)
+        else:
+            raise RuntimeError('unsupported mode!')
 
 class trading:
     """v1 created on ~2018/08/23, defined as class to save all the trading 
