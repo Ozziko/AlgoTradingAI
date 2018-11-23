@@ -3,6 +3,7 @@ See the Jupyter (.ipynb) notebook for project description and demonstration, **i
 
 Find my OzML module under /Files for execution.
 
+---
 You can find me on www.linkedin.com/in/oz-livneh, and contact me at oz.livneh@gmail.com.
 
 **I would be glad for any comment, question or discussion:**
@@ -10,4 +11,5 @@ You can find me on www.linkedin.com/in/oz-livneh, and contact me at oz.livneh@gm
 * You can leave a public comment in the Colab notebook.
 
 Yours,
+
 Oz Livneh
