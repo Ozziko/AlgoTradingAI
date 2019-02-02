@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
 """@author: Oz Livneh (oz.livneh@gmail.com),
-    all rights reserved, use at your own risk.
+    * All rights are reserved to me, Oz Livneh.
+    * This project is intended for demonstration purposes only.
+    * I am not a financial advisor.
+    * Use at your own risk ;-)
 
 See the explanation and demonstration at the Colab notebook:
     http://bit.ly/OzTradingAI
